@@ -25,7 +25,7 @@ pub const Surface = struct {
     }
 
     pub fn clear(self: *Surface, color: Color) void {
-        std.mem.set(Color, self.pixels, color);
+        @memset(self.pixels, color);
     }
 
     pub fn setPixelSigned(
