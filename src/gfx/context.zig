@@ -7,6 +7,7 @@ pub const Context = struct {
     allocator: std.mem.Allocator,
     surface: Surface,
     window: X11.X11Window,
+    key_escape_pressed: bool = false,
 
     pub fn init(
         allocator: std.mem.Allocator,
@@ -38,7 +39,19 @@ pub const Context = struct {
     }
 
     pub fn poll(self: *Context) bool {
-        return self.window.poll();
+        const running = self.window.poll(); 
+
+        if (self.window.last_key == .escape) {
+            self.key_escape_pressed = true;
+        }
+
+        return running;
+    }
+
+    pub fn isEscapePressed(self: *Context) bool {
+        const pressed = self.key_escape_pressed;
+        self.key_escape_pressed = false; // consume
+        return pressed;
     }
 
     pub fn beginFrame(self: *Context) void {

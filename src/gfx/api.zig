@@ -4,6 +4,10 @@ const Context = @import("context.zig").Context;
 /// Internal global context (raylib-style)
 var g_ctx: ?Context = null;
 
+pub const KeyboardKey = enum {
+    KEY_ESCAPE,
+};
+
 /// Initialize window and graphics context
 pub fn InitWindow(
     width: usize,
@@ -23,6 +27,12 @@ pub fn InitWindow(
         title,
     ) catch |err| {
         std.debug.panic("InitWindow failed: {}", .{err});
+    };
+}
+
+pub fn IsKeyPressed(key: KeyboardKey) bool {
+    return switch(key) {
+        .KEY_ESCAPE => g_ctx.?.isEscapePressed(),
     };
 }
 

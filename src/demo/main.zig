@@ -15,6 +15,11 @@ pub fn main() void {
 
         gfx.EndDrawing();
 
+        if (gfx.IsKeyPressed(.KEY_ESCAPE)) {
+            break;
+        }
+
         x = @mod(x + 2, w);
     }
+
 }
