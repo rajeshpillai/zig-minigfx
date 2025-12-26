@@ -16,7 +16,7 @@ pub fn build(b: *std.Build) void {
 
     // GFX module (Context lives here)
     const gfx_mod = b.createModule(.{
-        .root_source_file = b.path("src/gfx/context.zig"),
+        .root_source_file = b.path("src/gfx/api.zig"),
         .imports = &.{
             .{ .name = "minigfx-core", .module = core_mod },
             .{ .name = "minigfx-x11", .module = x11_mod },

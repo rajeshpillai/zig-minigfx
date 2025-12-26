@@ -1,28 +1,20 @@
-const std = @import("std");
-const Context = @import("minigfx-gfx").Context;
+const gfx = @import("minigfx-gfx");
 
-pub fn main() !void {
-    const allocator = std.heap.c_allocator;
-
-    var ctx = try Context.init(
-        allocator,
-        640,
-        480,
-        "minigfx demo",
-    );
-    defer ctx.deinit();
+pub fn main() void {
+    gfx.InitWindow(640, 480, "minigfx raylib-style demo");
+    defer gfx.CloseWindow();
 
     var x: i32 = 0;
-    const w_i32: i32 = @as(i32, @intCast(ctx.width()));
+    const w: i32 = @as(i32, @intCast(gfx.GetScreenWidth()));
 
-    while (ctx.poll()) {
-        ctx.beginFrame();
+    while (!gfx.WindowShouldClose()) {
+        gfx.BeginDrawing();
 
-        ctx.clear(0xFF202020);
-        ctx.fillRect(x, 180, 120, 80, 0xFFFF0000);
+        gfx.ClearBackground(0xFF202020);
+        gfx.DrawRectangle(x, 180, 120, 80, 0xFFFF0000);
 
-        ctx.endFrame();
+        gfx.EndDrawing();
 
-        x = @mod(x + 2, w_i32);
+        x = @mod(x + 2, w);
     }
 }
