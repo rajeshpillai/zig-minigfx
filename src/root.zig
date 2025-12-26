@@ -1,23 +1,17 @@
-//! By convention, root.zig is the root source file when making a library.
-const std = @import("std");
+//! minigfx - Minimal cross-platform graphics library for Zig
+//! Inspired by raylib's simple API design.
 
-pub fn bufferedPrint() !void {
-    // Stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-    const stdout = &stdout_writer.interface;
+const std = @import(\"std\");
 
-    try stdout.print("Run `zig build test` to run the tests.\n", .{});
+// Re-export main modules for library users
+pub const gfx = @import(\"gfx/api.zig\");
+pub const Surface = @import(\"core/surface.zig\").Surface;
+pub const Color = @import(\"core/surface.zig\").Color;
+pub const Colors = @import(\"core/surface.zig\").Colors;
+pub const rgba = @import(\"core/surface.zig\").rgba;
+pub const rgb = @import(\"core/surface.zig\").rgb;
 
-    try stdout.flush(); // Don't forget to flush!
-}
-
-pub fn add(a: i32, b: i32) i32 {
-    return a + b;
-}
-
-test "basic add functionality" {
-    try std.testing.expect(add(3, 7) == 10);
+// Run all tests
+test {
+    std.testing.refAllDecls(@This());
 }

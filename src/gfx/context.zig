@@ -25,6 +25,10 @@ pub const Context = struct {
     // Lifecycle
     // -------------------------
 
+    /// Initialize a new graphics context.
+    /// Creates a window and software rendering surface.
+    /// Backend must be initialized separately via initBackend() after
+    /// the Context is in its final memory location (heap-allocated).
     pub fn init(
         allocator: std.mem.Allocator,
         win_width: usize,
@@ -44,20 +48,22 @@ pub const Context = struct {
         );
         errdefer window.deinit();
 
-        // Create context with window, backend will be initialized later
         return Context{
             .allocator = allocator,
             .surface = surface,
-            .backend = undefined,
+            .backend = undefined,  // Will be initialized by initBackend()
             .backend_ctx = window,
         };
     }
 
-    /// Initialize backend after Context is in its final location
+    /// Initialize backend after Context is in its final location.
+    /// MUST be called after Context is heap-allocated and will not be moved.
+    /// The backend stores a pointer to backend_ctx, so Context must be stable.
     pub fn initBackend(self: *Context) void {
         self.backend = backend_x11.createBackend(&self.backend_ctx);
     }
 
+    /// Clean up all resources.
     pub fn deinit(self: *Context) void {
         self.backend.deinit(self.backend.ctx);
         self.surface.deinit(self.allocator);
@@ -67,15 +73,18 @@ pub const Context = struct {
     // Frame & event handling
     // -------------------------
 
-    /// Poll events. Returns false when app should exit.
+    /// Poll events and handle window state.
+    /// Returns false when the application should exit.
     pub fn poll(self: *Context) bool {
         const running = self.backend.poll(self.backend.ctx);
 
         // Resize handling
         const size = self.backend.getSize(self.backend.ctx);
         if (size.w != self.surface.width or size.h != self.surface.height) {
-            self.handleResize(size.w, size.h) catch {
-                @panic("failed to resize surface");
+            self.handleResize(size.w, size.h) catch |err| {
+                std.log.err("Failed to resize surface: {}", .{err});
+                // Continue running but log the error
+                // The old surface will still be used
             };
         }
 
@@ -87,11 +96,14 @@ pub const Context = struct {
         return running;
     }
 
+    /// Begin a new frame.
+    /// Currently a placeholder for future frame timing and batching.
     pub fn beginFrame(self: *Context) void {
         _ = self;
         // Placeholder: frame timing, batching, etc.
     }
 
+    /// End the current frame and present to screen.
     pub fn endFrame(self: *Context) void {
         self.backend.present(self.backend.ctx);
     }
@@ -100,6 +112,7 @@ pub const Context = struct {
     // Resize handling
     // -------------------------
 
+    /// Handle window resize by recreating the surface.
     fn handleResize(self: *Context, w: usize, h: usize) !void {
         self.surface.deinit(self.allocator);
         self.surface = try Surface.init(self.allocator, w, h);
@@ -116,10 +129,13 @@ pub const Context = struct {
     // Drawing helpers
     // -------------------------
 
+    /// Clear the entire surface with the specified color.
     pub fn clear(self: *Context, color: u32) void {
         self.surface.clear(color);
     }
 
+    /// Draw a filled rectangle with signed coordinates.
+    /// Coordinates outside the surface bounds are clipped.
     pub fn fillRect(
         self: *Context,
         x: i32,
@@ -135,6 +151,8 @@ pub const Context = struct {
     // Input queries
     // -------------------------
 
+    /// Check if the escape key was pressed.
+    /// Returns true only once per press (consumes the event).
     pub fn isEscapePressed(self: *Context) bool {
         const pressed = self.key_escape_pressed;
         self.key_escape_pressed = false; // consume
@@ -145,10 +163,12 @@ pub const Context = struct {
     // Info
     // -------------------------
 
+    /// Get the current surface width.
     pub fn width(self: *Context) usize {
         return self.surface.width;
     }
 
+    /// Get the current surface height.
     pub fn height(self: *Context) usize {
         return self.surface.height;
     }

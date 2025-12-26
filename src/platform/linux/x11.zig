@@ -86,7 +86,13 @@ pub const X11Window = struct {
     // -------------------------------------------------
     pub fn deinit(self: *X11Window) void {
         if (self.image) |img| {
-            img.*.data = null; // prevent freeing Zig memory
+            // CRITICAL: Set data pointer to null before destroying the XImage.
+            // The pixel buffer is owned by the Surface (Zig-managed memory),
+            // not by the XImage. If we don't null this out, XDestroyImage
+            // will attempt to free the pixel buffer using X11's allocator,
+            // which will cause a crash or corruption since it wasn't allocated
+            // by X11 in the first place.
+            img.*.data = null;
             if (img.*.f.destroy_image) |destroy_fn| {
                 _ = destroy_fn(img);
             }
