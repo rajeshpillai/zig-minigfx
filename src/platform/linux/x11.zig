@@ -1,35 +1,42 @@
+const std = @import("std");
+
 const c = @cImport({
     @cInclude("X11/Xlib.h");
     @cInclude("X11/Xutil.h");
 });
 
-pub const Key = enum {
-    escape,
-};
-
 pub const X11Window = struct {
     display: *c.Display,
     window: c.Window,
     gc: c.GC,
-    image: *c.XImage,
+
+    // Cached screen info (IMPORTANT: avoids macro calls later)
+    screen: c_int,
+    visual: *c.Visual,
+    depth: c_uint,
+
+    image: ?*c.XImage = null,
+
     width: usize,
     height: usize,
-    running: bool = true,
-    last_key: ?Key = null,
-    resized: bool = false, 
-    new_width: usize = 0,
-    new_height: usize = 0,  
 
+    // -------------------------------------------------
+    // Init
+    // -------------------------------------------------
     pub fn init(
         width: usize,
         height: usize,
         title: []const u8,
         pixels: []u32,
     ) !X11Window {
-        const display = c.XOpenDisplay(null) orelse
+        const display = c.XOpenDisplay(null) orelse {
             return error.XOpenDisplayFailed;
+        };
 
         const screen = c.DefaultScreen(display);
+        const visual = c.DefaultVisual(display, screen);
+        const depth: c_uint = @intCast(c.DefaultDepth(display, screen));
+
         const root = c.RootWindow(display, screen);
 
         const window = c.XCreateSimpleWindow(
@@ -45,115 +52,88 @@ pub const X11Window = struct {
         );
 
         _ = c.XStoreName(display, window, title.ptr);
+
         _ = c.XSelectInput(
-                display, 
-                window, 
-                c.ExposureMask | c.KeyPressMask | c.StructureNotifyMask
+            display,
+            window,
+            c.ExposureMask |
+                c.KeyPressMask |
+                c.StructureNotifyMask,
         );
+
         _ = c.XMapWindow(display, window);
 
         const gc = c.XCreateGC(display, window, 0, null);
 
-        const image = c.XCreateImage(
-            display,
-            c.DefaultVisual(display, screen),
-            24,
-            c.ZPixmap,
-            0,
-            @ptrCast(pixels.ptr),
-            @intCast(width),
-            @intCast(height),
-            32,
-            0,
-        );
-
-        return .{
+        var self = X11Window{
             .display = display,
             .window = window,
             .gc = gc,
-            .image = image,
+            .screen = screen,
+            .visual = visual,
+            .depth = depth,
             .width = width,
             .height = height,
         };
+
+        self.createImage(pixels, width, height);
+
+        return self;
     }
 
-    pub fn resizeFramebuffer(
-        self: *X11Window,
-        pixels: []u32,
-        w: usize,
-        h: usize,
-    ) void {
-        // NOTE: we intentionally do NOT free the old XImage data pointer
-        // because it points to old pixel memory which is already deallocated.
+    // -------------------------------------------------
+    // Deinit
+    // -------------------------------------------------
+    pub fn deinit(self: *X11Window) void {
+        if (self.image) |img| {
+            img.*.data = null; // prevent freeing Zig memory
+            if (img.*.f.destroy_image) |destroy_fn| {
+                _ = destroy_fn(img);
+            }
+        }
 
-        self.image = c.XCreateImage(
-            self.display,
-            c.DefaultVisual(self.display, c.DefaultScreen(self.display)),
-            24,
-            c.ZPixmap,
-            0,
-            @ptrCast(pixels.ptr),
-            @intCast(w),
-            @intCast(h),
-            32,
-            0,
-        );
-
-        self.width = w;
-        self.height = h;
+        _ = c.XFreeGC(self.display, self.gc);
+        _ = c.XDestroyWindow(self.display, self.window);
+        _ = c.XCloseDisplay(self.display);
     }
 
 
-    /// Returns false when the app should exit
+    // -------------------------------------------------
+    // Event polling
+    // -------------------------------------------------
     pub fn poll(self: *X11Window) bool {
-        self.last_key = null;
+        var event: c.XEvent = undefined;
 
-        while (c.XPending(self.display) > 0) {
-            var event: c.XEvent = undefined;
+        while (c.XPending(self.display) != 0) {
             _ = c.XNextEvent(self.display, &event);
 
             switch (event.type) {
-                c.KeyPress => {
-                    const keycode = event.xkey.keycode;
+                c.DestroyNotify => return false,
 
-                    // X11 ESC is usually keycode 9
-                    if (keycode == 9) {
-                        self.last_key = .escape;
-                        self.running = false;
-                    }
-                },
-                c.ClientMessage => {
-                    self.running = false;
-                },
                 c.ConfigureNotify => {
-                    const w = @as(usize, @intCast(event.xconfigure.width));
-                    const h = @as(usize, @intCast(event.xconfigure.height));
-                    if (w != self.width or h != self.height) {
-                        self.width = w;
-                        self.height = h;
-                        self.new_width = w;
-                        self.new_height = h;
-                        self.resized = true;
-                    }
+                    const cfg = event.xconfigure;
+                    self.width = @intCast(cfg.width);
+                    self.height = @intCast(cfg.height);
                 },
+
                 else => {},
             }
         }
-        return self.running;
+
+        return true;
     }
 
-    pub fn consumeResize(self: *X11Window) ?struct { w: usize, h: usize } {
-       if (!self.resized) return null;
-       self.resized = false;
-       return .{ .w = self.new_width, .h = self.new_height };   
-    }
-
+    // -------------------------------------------------
+    // Present
+    // -------------------------------------------------
     pub fn present(self: *X11Window) void {
+        if (self.image == null) return;
+
         _ = c.XPutImage(
             self.display,
             self.window,
             self.gc,
-            self.image,
+            self.image.?,
             0,
             0,
             0,
@@ -161,11 +141,49 @@ pub const X11Window = struct {
             @intCast(self.width),
             @intCast(self.height),
         );
+
         _ = c.XFlush(self.display);
     }
 
-    pub fn deinit(self: *X11Window) void {
-        _ = c.XDestroyWindow(self.display, self.window);
-        _ = c.XCloseDisplay(self.display);
+    // -------------------------------------------------
+    // Resize framebuffer (NO Xlib macros here!)
+    // -------------------------------------------------
+    pub fn resizeFramebuffer(
+    self: *X11Window,
+    pixels: []u32,
+    w: usize,
+    h: usize,
+) void {
+        if (self.image) |img| {
+            img.*.data = null;
+            if (img.*.f.destroy_image) |destroy_fn| {
+                _ = destroy_fn(img);
+            }
+        }
+
+        self.createImage(pixels, w, h);
+        self.width = w;
+        self.height = h;
     }
+
+    fn createImage(
+        self: *X11Window,
+        pixels: []u32,
+        w: usize,
+        h: usize,
+    ) void {
+        self.image = c.XCreateImage(
+            self.display,                         // Display*
+            self.visual,                          // Visual*
+            self.depth,                           // depth (unsigned int)
+            c.ZPixmap,                            // format
+            0,                                    // offset
+            @ptrCast(pixels.ptr),                 // data
+            @intCast(w),                          // width
+            @intCast(h),                          // height
+            32,                                   // bitmap_pad
+            @intCast(w * 4),                      // bytes_per_line
+        );
+    }
+
 };

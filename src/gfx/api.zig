@@ -28,6 +28,9 @@ pub fn InitWindow(
     ) catch |err| {
         std.debug.panic("InitWindow failed: {}", .{err});
     };
+    
+    // Initialize backend after Context is in its final location
+    g_ctx.?.initBackend();
 }
 
 pub fn IsKeyPressed(key: KeyboardKey) bool {
