@@ -1,35 +1,28 @@
 const std = @import("std");
-
-const Surface = @import("minigfx-core").Surface;
-const X11 = @import("minigfx-x11");
+const Context = @import("minigfx-gfx").Context;
 
 pub fn main() !void {
     const allocator = std.heap.c_allocator;
 
-    // Create software surface
-    var surface = try Surface.init(allocator, 640, 480);
-    defer surface.deinit(allocator);
-
-    // Create X11 window (shares surface pixels)
-    var window = try X11.X11Window.init(
-        surface.width,
-        surface.height,
+    var ctx = try Context.init(
+        allocator,
+        640,
+        480,
         "minigfx demo",
-        surface.pixels,
     );
-    defer window.deinit();
+    defer ctx.deinit();
 
     var x: i32 = 0;
+    const w_i32: i32 = @as(i32, @intCast(ctx.width()));
 
-    // Main loop
-    while (window.poll()) {
-        surface.clear(0xFF202020);
-        surface.fillRectSigned(x, 180, 120, 80, 0xFFFF0000);
+    while (ctx.poll()) {
+        ctx.beginFrame();
 
-        window.present();
+        ctx.clear(0xFF202020);
+        ctx.fillRect(x, 180, 120, 80, 0xFFFF0000);
 
-        x = @mod(x + 2, @as(i32, @intCast(surface.width)));
+        ctx.endFrame();
 
+        x = @mod(x + 2, w_i32);
     }
-
 }
