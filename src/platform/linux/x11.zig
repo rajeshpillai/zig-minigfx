@@ -16,6 +16,9 @@ pub const X11Window = struct {
     height: usize,
     running: bool = true,
     last_key: ?Key = null,
+    resized: bool = false, 
+    new_width: usize = 0,
+    new_height: usize = 0,  
 
     pub fn init(
         width: usize,
@@ -42,7 +45,11 @@ pub const X11Window = struct {
         );
 
         _ = c.XStoreName(display, window, title.ptr);
-        _ = c.XSelectInput(display, window, c.ExposureMask | c.KeyPressMask);
+        _ = c.XSelectInput(
+                display, 
+                window, 
+                c.ExposureMask | c.KeyPressMask | c.StructureNotifyMask
+        );
         _ = c.XMapWindow(display, window);
 
         const gc = c.XCreateGC(display, window, 0, null);
@@ -70,6 +77,33 @@ pub const X11Window = struct {
         };
     }
 
+    pub fn resizeFramebuffer(
+        self: *X11Window,
+        pixels: []u32,
+        w: usize,
+        h: usize,
+    ) void {
+        // NOTE: we intentionally do NOT free the old XImage data pointer
+        // because it points to old pixel memory which is already deallocated.
+
+        self.image = c.XCreateImage(
+            self.display,
+            c.DefaultVisual(self.display, c.DefaultScreen(self.display)),
+            24,
+            c.ZPixmap,
+            0,
+            @ptrCast(pixels.ptr),
+            @intCast(w),
+            @intCast(h),
+            32,
+            0,
+        );
+
+        self.width = w;
+        self.height = h;
+    }
+
+
     /// Returns false when the app should exit
     pub fn poll(self: *X11Window) bool {
         self.last_key = null;
@@ -91,10 +125,27 @@ pub const X11Window = struct {
                 c.ClientMessage => {
                     self.running = false;
                 },
+                c.ConfigureNotify => {
+                    const w = @as(usize, @intCast(event.xconfigure.width));
+                    const h = @as(usize, @intCast(event.xconfigure.height));
+                    if (w != self.width or h != self.height) {
+                        self.width = w;
+                        self.height = h;
+                        self.new_width = w;
+                        self.new_height = h;
+                        self.resized = true;
+                    }
+                },
                 else => {},
             }
         }
         return self.running;
+    }
+
+    pub fn consumeResize(self: *X11Window) ?struct { w: usize, h: usize } {
+       if (!self.resized) return null;
+       self.resized = false;
+       return .{ .w = self.new_width, .h = self.new_height };   
     }
 
     pub fn present(self: *X11Window) void {

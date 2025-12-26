@@ -41,11 +41,26 @@ pub const Context = struct {
     pub fn poll(self: *Context) bool {
         const running = self.window.poll(); 
 
+        if (self.window.consumeResize()) |resize| {
+            //try self.handleResize(resize.w, resize.h);
+            self.handleResize(resize.w, resize.h) catch |err| {
+                std.debug.panic("handleResize failed: {}", .{err});
+            };
+        }
+
         if (self.window.last_key == .escape) {
             self.key_escape_pressed = true;
         }
 
         return running;
+    }
+
+    pub fn height(self: *Context) usize {
+        return self.surface.height;
+    }
+
+    pub fn width(self: *Context) usize {
+        return self.surface.width;
     }
 
     pub fn isEscapePressed(self: *Context) bool {
@@ -79,7 +94,9 @@ pub const Context = struct {
         self.surface.fillRectSigned(x, y, w, h, color);
     }
 
-    pub fn width(self: *Context) usize {
-        return self.surface.width;
+    fn handleResize(self: *Context, w: usize, h: usize) !void {
+        self.surface.deinit(self.allocator);
+        self.surface = try Surface.init(self.allocator, w, h);
+        self.window.resizeFramebuffer(self.surface.pixels, w, h);
     }
 };

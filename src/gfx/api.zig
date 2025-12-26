@@ -79,3 +79,7 @@ pub fn DrawRectangle(
 pub fn GetScreenWidth() usize {
     return g_ctx.?.width();
 }
+
+pub fn GetScreenHeight() usize {
+    return g_ctx.?.height();
+}
